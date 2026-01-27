@@ -1,0 +1,30 @@
+# dependencies
+node_modules
+.bun
+
+# build output
+dist
+out
+build
+.next
+
+# generated files
+/src/generated/prisma
+*.tsbuildinfo
+
+# lockfiles
+bun.lockb
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# system & logs
+.DS_Store
+.idea
+.vscode
+*.log
+coverage
+
+# env files
+.env
+.env.*
