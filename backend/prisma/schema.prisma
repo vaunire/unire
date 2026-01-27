@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --- Перечисления (Enums) ---
+
+// Роли пользователя
+enum Role {
+  MEMBER
+  ADMIN
+  OWNER
+}
+
+// Типы чатов
+enum ChatType {
+  DIRECT
+  GROUP
+  CHANNEL
+}
+
+// Типы сообщений
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  FILE
+  SYSTEM
+}
+
+// --- Модели (Models) ---
+
+// Модель пользователя
+model User {
+  id      String  @id @default(uuid())
+  clerkId String  @unique
+  email   String  @unique
+  name    String
+  bio     String?
+  avatar  String?
+
+  isOnline Boolean  @default(false)
+  lastSeen DateTime @default(now())
+
+  // Связи
+  memberships ChatMember[] // Чаты, в которых состоит пользователь
+  messages    Message[] // Отправленные сообщения
+  reactions   Reaction[] // Поставленные реакции
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+// Модель чата (личные сообщения или группы)
+model Chat {
+  id          String   @id @default(uuid())
+  type        ChatType @default(DIRECT)
+  name        String?
+  description String?
+  avatar      String?
+
+  lastMessageAt DateTime @default(now())
+
+  // Связи
+  members  ChatMember[] // Список участников
+  messages Message[] // История сообщений
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("chats")
+}
+
+// Промежуточная таблица участника чата
+// Хранит настройки конкретного пользователя для конкретного чата
+model ChatMember {
+  id   String @id @default(uuid())
+  role Role   @default(MEMBER)
+
+  // Персональные настройки чата для пользователя
+  isMuted    Boolean @default(false)
+  isPinned   Boolean @default(false)
+  isArchived Boolean @default(false)
+
+  lastReadMessageId String?
+
+  // Кто является участником
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // В каком чате состоит
+  chatId String
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  joinedAt DateTime @default(now())
+
+  // Пользователь не может быть в одном чате дважды
+  @@unique([userId, chatId])
+  // Индекс для быстрого поиска всех чатов пользователя
+  @@index([userId])
+  @@map("chat_members")
+}
+
+// Модель сообщения
+model Message {
+  id   String      @id @default(uuid())
+  text String?
+  type MessageType @default(TEXT)
+
+  isEdited  Boolean @default(false)
+  isDeleted Boolean @default(false)
+
+  // В каком чате отправлено
+  chatId String
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  // Кто отправил (может быть null, если пользователь удален)
+  senderId String?
+  sender   User?   @relation(fields: [senderId], references: [id], onDelete: SetNull)
+
+  // Функционал ответов (Reply) - на какое сообщение отвечаем
+  replyToId String?
+  replyTo   Message?  @relation("ReplyRelation", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Message[] @relation("ReplyRelation")
+
+  attachments Attachment[] // Файлы, прикрепленные к сообщению
+  reactions   Reaction[] // Реакции пользователей
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Индекс для ускорения загрузки истории сообщений
+  @@index([chatId, createdAt])
+  @@map("messages")
+}
+
+// Модель вложения (файлы)
+model Attachment {
+  id       String  @id @default(uuid())
+  url      String
+  name     String?
+  size     Int?
+  mimeType String?
+
+  // К какому сообщению прикреплено
+  messageId String
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@map("attachments")
+}
+
+// Модель реакции на сообщение
+model Reaction {
+  id    String @id @default(uuid())
+  emoji String
+
+  // К какому сообщению
+  messageId String
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  // Кто поставил
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  // Один пользователь может поставить одну и ту же реакцию на сообщение только один раз
+  @@unique([messageId, userId, emoji])
+  @@map("reactions")
+}
