@@ -1,4 +1,17 @@
-# Logs
+# dependencies
+node_modules
+
+# output
+out
+dist
+dist-ssr
+*.tgz
+
+# code coverage
+coverage
+*.lcov
+
+# logs
 logs
 *.log
 npm-debug.log*
@@ -7,18 +20,28 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
 *.local
 
-# Editor directories and files
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# IDEs and Editors
+.idea
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# Finder (MacOS) folder config
+.DS_Store
