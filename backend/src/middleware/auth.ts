@@ -14,7 +14,7 @@ export const ProtectRoute = [
           .status(401)
           .json({ message: "💥 Ошибка авторизации: отсутствует Clerk ID" });
       }
-      const user = await db.user.findUnique({ where: { clerkId: clerkId } });
+      const user = await db.user.findUnique({ where: { clerkId } });
 
       if (!user) {
         return res.status(404).json({ message: "⚠️ Пользователь не найден" });
@@ -22,8 +22,7 @@ export const ProtectRoute = [
       req.userId = user.id;
       next();
     } catch (error) {
-      console.error("💥 Ошибка в ProtectRoute", error);
-      res.status(500).json({ message: "[500] Упс! Что-то пошло не так." });
+      next(error);
     }
   },
 ];

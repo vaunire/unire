@@ -44,7 +44,7 @@ export async function authCallback(
           clerkId,
           name: clerkUser.firstName
             ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim()
-            : clerkUser.emailAddresses[0]?.emailAddress.split("@")[0] ||
+            : clerkUser.emailAddresses[0]?.emailAddress?.split("@")[0] ||
               "Пользователь",
           email: clerkUser.emailAddresses[0]?.emailAddress || "",
           avatar: clerkUser.imageUrl,
