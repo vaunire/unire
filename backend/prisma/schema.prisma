@@ -99,7 +99,8 @@ model ChatMember {
   chatId String
   chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
-  joinedAt DateTime @default(now())
+  joinedAt   DateTime @default(now())
+  lastReadAt DateTime @default(now())
 
   // Пользователь не может быть в одном чате дважды
   @@unique([userId, chatId])

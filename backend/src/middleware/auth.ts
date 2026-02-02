@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { getAuth, requireAuth } from "@clerk/express";
 import { db } from "../config/database";
+import { AppError } from "./appError";
 
 export type AuthRequest = Request & { userId?: string };
 
@@ -10,14 +11,12 @@ export const ProtectRoute = [
     try {
       const { userId: clerkId } = getAuth(req);
       if (!clerkId) {
-        return res
-          .status(401)
-          .json({ message: "💥 Ошибка авторизации: отсутствует Clerk ID" });
+        throw new AppError("💥 Ошибка авторизации: отсутствует Clerk ID", 401);
       }
       const user = await db.user.findUnique({ where: { clerkId } });
 
       if (!user) {
-        return res.status(404).json({ message: "⚠️ Пользователь не найден" });
+        throw new AppError("⚠️ Пользователь не найден", 404);
       }
       req.userId = user.id;
       next();
