@@ -100,72 +100,138 @@ export async function getOrCreateChat(
       throw new AppError("Не указан ID собеседника", 400);
     }
 
-    let chat = await db.chat.findFirst({
-      where: {
-        type: "DIRECT",
-        AND: [
-          { members: { some: { userId: userId } } },
-          { members: { some: { userId: otherUserId } } },
-        ],
-      },
-      include: {
-        members: {
-          include: {
-            user: {
-              select: { name: true, email: true, avatar: true, isOnline: true },
-            },
-          },
-        },
-        messages: { orderBy: { createdAt: "desc" }, take: 1 },
-      },
-    });
+    const isSelfChat = userId === otherUserId;
 
-    if (!chat) {
-      chat = await db.chat.create({
-        data: {
+    let existingChat;
+
+    if (isSelfChat) {
+      existingChat = await db.chat.findFirst({
+        where: {
           type: "DIRECT",
           members: {
-            create: [
-              { userId: userId, role: "OWNER" },
-              { userId: otherUserId, role: "MEMBER" },
-            ],
+            every: { userId: userId },
           },
         },
         include: {
           members: {
             include: {
-              user: {
-                select: {
-                  name: true,
-                  email: true,
-                  avatar: true,
-                  isOnline: true,
-                },
-              },
+              user: { select: { name: true, email: true, avatar: true, isOnline: true } },
             },
           },
-          messages: true,
+          messages: { orderBy: { createdAt: "desc" }, take: 1 },
+        },
+      });
+    } else {
+      existingChat = await db.chat.findFirst({
+        where: {
+          type: "DIRECT",
+          AND: [
+            { members: { some: { userId: userId } } },
+            { members: { some: { userId: otherUserId } } },
+          ],
+        },
+        include: {
+          members: {
+            include: {
+              user: { select: { name: true, email: true, avatar: true, isOnline: true } },
+            },
+          },
+          messages: { orderBy: { createdAt: "desc" }, take: 1 },
         },
       });
     }
 
-    const otherMember = chat.members.find((m) => m.userId !== userId);
+    if (existingChat) {
+      const otherMember = isSelfChat
+        ? existingChat.members[0]
+        : existingChat.members.find((m) => m.userId !== userId);
+
+      const otherUser = otherMember?.user;
+
+      return res.json({
+        id: existingChat.id,
+        name: isSelfChat ? "Избранное" : otherUser?.name,
+        avatar: isSelfChat ? otherUser?.avatar : otherUser?.avatar,
+        isOnline: isSelfChat ? true : otherUser?.isOnline,
+        lastMessage: existingChat.messages[0] || null,
+        createdAt: existingChat.createdAt,
+      });
+    }
+
+    // Создание чата
+    const newChat = await db.$transaction(async (tx) => {
+      if (isSelfChat) {
+        const checkAgain = await tx.chat.findFirst({
+          where: {
+            type: "DIRECT",
+            members: { every: { userId: userId } },
+          },
+          include: { members: { include: { user: true } }, messages: true }
+        });
+        if (checkAgain) return checkAgain;
+
+        return await tx.chat.create({
+          data: {
+            type: "DIRECT",
+            members: {
+              create: [{ userId, role: "OWNER" }],
+            },
+          },
+          include: {
+            members: { include: { user: true } },
+            messages: true,
+          },
+        });
+      } else {
+        const checkAgain = await tx.chat.findFirst({
+          where: {
+            type: "DIRECT",
+            AND: [
+              { members: { some: { userId: userId } } },
+              { members: { some: { userId: otherUserId } } },
+            ],
+          },
+          include: { members: { include: { user: true } }, messages: true },
+        });
+        if (checkAgain) return checkAgain;
+
+        return await tx.chat.create({
+          data: {
+            type: "DIRECT",
+            members: {
+              create: [
+                { userId: userId, role: "OWNER" },
+                { userId: otherUserId, role: "MEMBER" },
+              ],
+            },
+          },
+          include: {
+            members: { include: { user: true } },
+            messages: true,
+          },
+        });
+      }
+    });
+
+    const otherMember = isSelfChat
+      ? newChat.members[0]
+      : newChat.members.find((m) => m.userId !== userId);
     const otherUser = otherMember?.user;
 
     res.json({
-      id: chat.id,
-      name: otherUser?.name,
+      id: newChat.id,
+      name: isSelfChat ? "Избранное" : otherUser?.name,
       avatar: otherUser?.avatar,
-      isOnline: otherUser?.isOnline,
-      lastMessage: chat.messages[0] || null,
-      createdAt: chat.createdAt,
+      isOnline: isSelfChat ? true : otherUser?.isOnline,
+      lastMessage: newChat.messages[0] || null,
+      createdAt: newChat.createdAt,
     });
   } catch (error) {
     next(error);
   }
 }
 
-// Создает групповой чат
+// Создает новую группу
 export async function createGroup(
   req: AuthRequest,
   res: Response,
@@ -175,22 +241,14 @@ export async function createGroup(
     const userId = req.userId!;
     const { name, description, members, avatar } = req.body;
 
-    if (!name) {
-      throw new AppError("Не указано название группы", 400);
-    }
-
+    if (!name) throw new AppError("Не указано название группы", 400);
     if (!members || !Array.isArray(members) || members.length === 0) {
-      throw new AppError("Не указаны участники группы", 400);
+      throw new AppError("Добавьте хотя бы одного участника", 400);
     }
 
-    // Создаем список участников: владелец + выбранные пользователи
-    const membersData = [
-      { userId: userId, role: "OWNER" },
-      ...members.map((memberId: string) => ({
-        userId: memberId,
-        role: "MEMBER",
-      })),
-    ];
+    const uniqueMemberIds = Array.from(new Set(members)).filter(
+      (id) => id !== userId
+    );
 
     const chat = await db.chat.create({
       data: {
@@ -199,27 +257,18 @@ export async function createGroup(
         description,
         avatar,
         members: {
-          create: membersData.map(m => ({
-            userId: m.userId,
-            role: m.role as any
-          })),
+          create: [
+            { userId, role: "OWNER" as any },
+            ...uniqueMemberIds.map((id) => ({ userId: id as string, role: "MEMBER" as any })),
+          ],
         },
       },
       include: {
         members: {
-          include: {
-            user: {
-              select: {
-                name: true,
-                email: true,
-                avatar: true,
-                isOnline: true,
-              },
-            },
-          },
+          include: { user: { select: { name: true, email: true, avatar: true, isOnline: true } } }
         },
         messages: true,
-      },
+      }
     });
 
     res.json(chat);

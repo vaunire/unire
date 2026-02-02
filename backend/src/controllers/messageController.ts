@@ -147,6 +147,21 @@ export async function toggleReaction(
       throw new AppError("Не указан эмодзи", 400);
     }
 
+    const message = await db.message.findFirst({
+      where: {
+        id: messageId as string,
+        chat: {
+          members: {
+            some: { userId },
+          },
+        },
+      },
+    });
+
+    if (!message) {
+      throw new AppError("Сообщение не найдено или нет доступа", 404);
+    }
+
     const existingReaction = await db.reaction.findUnique({
       where: {
         messageId_userId_emoji: {
