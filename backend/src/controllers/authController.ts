@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import type { AuthRequest } from "../middleware/auth";
 import { db } from "../config/database";
 import { getAuth, clerkClient } from "@clerk/express";
+import { AppError } from "../middleware/appError";
 
 // Получает профиль текущего авторизованного пользователя из БД
 export async function getMe(
@@ -12,7 +13,7 @@ export async function getMe(
   try {
     const user = await db.user.findUnique({ where: { id: req.userId } });
     if (!user) {
-      return res.status(404).json({ message: "⚠️ Пользователь не найден" });
+      throw new AppError("⚠️ Пользователь не найден", 404);
     }
     res.json(user);
   } catch (error) {
@@ -29,9 +30,7 @@ export async function authCallback(
   try {
     const { userId: clerkId } = getAuth(req);
     if (!clerkId) {
-      return res
-        .status(401)
-        .json({ message: "💥 Ошибка авторизации: отсутствует Clerk ID" });
+      throw new AppError("💥 Ошибка авторизации: отсутствует Clerk ID", 401);
     }
 
     // Проверяем, есть ли пользователь в базе
